@@ -2,24 +2,22 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = 'health-monitor'
-        REPO_URL = 'https://github.com/vedantgurav9/Healthcare-management.git'
-        BRANCH = 'main'
+        IMAGE_NAME = 'health-monitor'
     }
 
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: "${BRANCH}", url: "${REPO_URL}"
+                git 'https://github.com/vedantgurav9/Healthcare-management.git'
             }
         }
 
         stage('Install Dependencies') {
             steps {
                 echo 'Installing Python dependencies...'
-                sh '''
+                bat '''
                     python -m venv venv
-                    . venv/Scripts/activate
+                    call venv\\Scripts\\activate
                     pip install --upgrade pip
                     pip install -r requirements.txt
                 '''
@@ -29,30 +27,28 @@ pipeline {
         stage('Run Tests') {
             steps {
                 echo 'Running tests...'
-                sh '''
-                    . venv/Scripts/activate
-                    pytest tests/ || echo "Tests failed but continuing"
+                bat '''
+                    call venv\\Scripts\\activate
+                    python -m unittest discover
                 '''
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                echo "Building Docker image: ${DOCKER_IMAGE}"
-                sh "docker build -t ${DOCKER_IMAGE} ."
+                echo 'Building Docker image...'
+                bat "docker build -t %IMAGE_NAME% ."
             }
         }
 
         stage('Push Docker Image') {
-            when {
-                expression { return env.DOCKER_USERNAME != null && env.DOCKER_PASSWORD != null }
-            }
             steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                    sh '''
-                        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-                        docker tag health-monitor $DOCKER_USERNAME/health-monitor:latest
-                        docker push $DOCKER_USERNAME/health-monitor:latest
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    echo 'Pushing Docker image to Docker Hub...'
+                    bat '''
+                        docker login -u %DOCKER_USER% -p %DOCKER_PASS%
+                        docker tag %IMAGE_NAME% %DOCKER_USER%/%IMAGE_NAME%
+                        docker push %DOCKER_USER%/%IMAGE_NAME%
                     '''
                 }
             }
@@ -60,11 +56,10 @@ pipeline {
 
         stage('Deploy Docker Container') {
             steps {
-                echo "Running container locally (optional deployment step)..."
-                sh '''
-                    docker stop health-monitor || true
-                    docker rm health-monitor || true
-                    docker run -d --name health-monitor -p 8000:8000 health-monitor
+                echo 'Deploying Docker container...'
+                bat '''
+                    docker rm -f health-monitor-container || echo Container does not exist
+                    docker run -d --name health-monitor-container -p 5000:5000 %IMAGE_NAME%
                 '''
             }
         }
@@ -74,11 +69,11 @@ pipeline {
         always {
             cleanWs()
         }
+        success {
+            echo 'Pipeline completed successfully!'
+        }
         failure {
             echo 'Pipeline failed!'
-        }
-        success {
-            echo 'Pipeline succeeded!'
         }
     }
 }
