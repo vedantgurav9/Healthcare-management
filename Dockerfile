@@ -21,5 +21,4 @@ ENV PYSPARK_PYTHON=python3
 # Default command to run your app
 CMD ["python3", "main.py"]
 
-RUN chmod -R 777 /app/data
 
